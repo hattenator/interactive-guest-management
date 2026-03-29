@@ -1,4 +1,3 @@
-// go:build windows
 //go:build windows
 // +build windows
 
@@ -85,20 +84,6 @@ func main() {
 	hostSocket := openSocket(path)
 	defer windows.CloseHandle(hostSocket)
 
-	// --- write ----------------------------------------------------------
-	var written uint32
-	if err := windows.WriteFile(hostSocket, []byte("hello\n"), &written, nil); err != nil {
-		panic(err)
-	}
-	fmt.Printf("wrote %d bytes\n", written)
-
-	// --- read ------------------------------------------------------------
-	buf := make([]byte, 1024)
-	var n uint32
-	if err := windows.ReadFile(hostSocket, buf, &n, nil); err != nil {
-		panic(err)
-	}
-	fmt.Printf("read %d bytes: %q\n", n, buf[:n])
 }
 
 // GetLastInputInfo returns the tick count value of the last user input.
@@ -161,7 +146,21 @@ func getCurrentTimeTicks() uint64 {
 }
 
 func getPowerState(hostSocket windows.Handle) (powerState string) {
+	// --- write ----------------------------------------------------------
+	var written uint32
 
+	if err := windows.WriteFile(hostSocket, []byte("hello\n"), &written, nil); err != nil {
+		panic(err)
+	}
+	fmt.Printf("wrote %d bytes\n", written)
+
+	// --- read ------------------------------------------------------------
+	buf := make([]byte, 1024)
+	var n uint32
+	if err := windows.ReadFile(hostSocket, buf, &n, nil); err != nil {
+		panic(err)
+	}
+	fmt.Printf("read %d bytes: %q\n", n, buf[:n])
 	return
 }
 
