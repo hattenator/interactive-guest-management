@@ -1,0 +1,4 @@
+<channel type='unix'>
+  <source mode='bind' path='/var/lib/libvirt/qemu/win11-agent.sock'/>
+  <target type='virtio' name='host.0'/>
+</channel>

@@ -11,6 +11,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/hattenator/interactive-guest-management/pkg/protocol"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc/eventlog"
 )
@@ -44,6 +45,7 @@ func init() {
 
 	// Hook the standard logger to also write to the event log.
 	log.SetOutput(os.Stdout)
+
 }
 
 // closeCleanUp closes the event log when the program exits.
@@ -83,7 +85,12 @@ func main() {
 	path := `\\.\Global\host.0`
 	hostSocket := openSocket(path)
 	defer windows.CloseHandle(hostSocket)
+	protocolHandler := protocol.Win{HostSocket: hostSocket}
 
+	go getPowerState(protocolHandler)
+	for true {
+		time.Sleep(1000 * time.Millisecond)
+	}
 }
 
 // GetLastInputInfo returns the tick count value of the last user input.
@@ -145,22 +152,13 @@ func getCurrentTimeTicks() uint64 {
 	return currentTicks
 }
 
-func getPowerState(hostSocket windows.Handle) (powerState string) {
-	// --- write ----------------------------------------------------------
-	var written uint32
+func getPowerState(protocolHandler protocol.Win) (powerState string) {
 
-	if err := windows.WriteFile(hostSocket, []byte("hello\n"), &written, nil); err != nil {
-		panic(err)
+	command := "GetPowerState"
+	for true {
+		protocolHandler.SendCommand(command)
+		time.Sleep(5000 * time.Millisecond)
 	}
-	fmt.Printf("wrote %d bytes\n", written)
-
-	// --- read ------------------------------------------------------------
-	buf := make([]byte, 1024)
-	var n uint32
-	if err := windows.ReadFile(hostSocket, buf, &n, nil); err != nil {
-		panic(err)
-	}
-	fmt.Printf("read %d bytes: %q\n", n, buf[:n])
 	return
 }
 

@@ -1,2 +1,5 @@
 guest/guest.exe
 host/host.exe
+cmd/guest/guest.exe
+cmd/guest/guest.exe~
+cmd/host/host.exe
