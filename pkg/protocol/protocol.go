@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand/v2"
+	"net"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -60,6 +62,28 @@ func uint64ToBytes(v uint64) []byte {
 
 type Win struct {
 	HostSocket windows.Handle
+}
+
+type Linux struct {
+	GuestSocket net.Conn
+}
+
+func (socketHolder Linux) ReceiveCommands() {
+	for true {
+		// TODO for security, I should limit the size of messages received.
+		var clientMessage []byte
+		readSize, err := socketHolder.GuestSocket.Read(clientMessage)
+		if err == nil && readSize > 0 {
+			decodedMessage := CmdMessage{}
+			jsonErr := json.Unmarshal(clientMessage, &decodedMessage)
+			if jsonErr == nil {
+				log.Printf("Received Command: %v", decodedMessage)
+			}
+		}
+
+		time.Sleep(1000 * time.Millisecond)
+	}
+
 }
 
 func (w Win) SendCommand(command string) {
