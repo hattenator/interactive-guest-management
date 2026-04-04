@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 package main
 
 import (
@@ -5,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/hattenator/interactive-guest-management/pkg/protocol"
+	"github.com/hattenator/interactive-guest-management/pkg/protocol/linux"
 )
 
 // We need access to read a qemu socket
@@ -15,7 +18,7 @@ func main() {
 
 	//Open a the socket file
 	guestSocket := openGuestSocket()
-	guestProtocol := protocol.Linux{GuestSocket: guestSocket}
+	guestProtocol := linux.SocketListener{GuestSocket: guestSocket}
 	go guestProtocol.ReceiveCommands()
 
 	for true {

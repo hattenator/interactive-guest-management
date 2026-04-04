@@ -6,12 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
-	"math/rand/v2"
-	"net"
 	"time"
-
-	"golang.org/x/sys/windows"
 )
 
 // CmdMessage holds the command payload and related metadata.
@@ -58,63 +53,6 @@ func uint64ToBytes(v uint64) []byte {
 		b[7-i] = byte(v >> (i * 8))
 	}
 	return b
-}
-
-type Win struct {
-	HostSocket windows.Handle
-}
-
-type Linux struct {
-	GuestSocket net.Conn
-}
-
-func (socketHolder Linux) ReceiveCommands() {
-	for true {
-		// TODO for security, I should limit the size of messages received.
-		var clientMessage []byte
-		readSize, err := socketHolder.GuestSocket.Read(clientMessage)
-		if err == nil && readSize > 0 {
-			decodedMessage := CmdMessage{}
-			jsonErr := json.Unmarshal(clientMessage, &decodedMessage)
-			if jsonErr == nil {
-				log.Printf("Received Command: %v", decodedMessage)
-			}
-		}
-
-		time.Sleep(1000 * time.Millisecond)
-	}
-
-}
-
-func (w Win) SendCommand(command string) {
-	msg, err := NewCmdMessage(command, rand.Uint64(), []byte("secret"))
-	if err != nil {
-		panic(err)
-	}
-	jsonBytes, err := json.MarshalIndent(msg, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-
-	// --- write ----------------------------------------------------------
-	var written uint32
-
-	if err := windows.WriteFile(w.HostSocket, jsonBytes, &written, nil); err != nil {
-		panic(err)
-	}
-	fmt.Printf("wrote %d bytes\n", written)
-
-	//TODO put a time limit on the Read and retry
-	//TODO catch socket errors and reopen the socket
-
-	// --- read ------------------------------------------------------------
-	buf := make([]byte, 1024)
-	var n uint32
-	if err := windows.ReadFile(w.HostSocket, buf, &n, nil); err != nil {
-		panic(err)
-	}
-	fmt.Printf("read %d bytes: %q\n", n, buf[:n])
-	return
 }
 
 func Example() {

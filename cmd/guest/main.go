@@ -11,7 +11,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/hattenator/interactive-guest-management/pkg/protocol"
+	"github.com/hattenator/interactive-guest-management/pkg/protocol/win"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc/eventlog"
 )
@@ -85,7 +85,7 @@ func main() {
 	path := `\\.\Global\host.0`
 	hostSocket := openSocket(path)
 	defer windows.CloseHandle(hostSocket)
-	protocolHandler := protocol.Win{HostSocket: hostSocket}
+	protocolHandler := win.SocketListener{HostSocket: hostSocket}
 
 	go getPowerState(protocolHandler)
 	for true {
@@ -152,7 +152,7 @@ func getCurrentTimeTicks() uint64 {
 	return currentTicks
 }
 
-func getPowerState(protocolHandler protocol.Win) (powerState string) {
+func getPowerState(protocolHandler win.SocketListener) (powerState string) {
 
 	command := "GetPowerState"
 	for true {
