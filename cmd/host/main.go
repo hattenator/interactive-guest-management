@@ -6,10 +6,17 @@ package main
 import (
 	"log"
 	"net"
+	"os"
 	"time"
 
 	"github.com/hattenator/interactive-guest-management/pkg/protocol/linux"
 )
+
+func init() {
+	// Hook the standard logger to also write to the event log.
+	log.SetOutput(os.Stdout)
+
+}
 
 // We need access to read a qemu socket
 // And we need access to send tuned-adm commands

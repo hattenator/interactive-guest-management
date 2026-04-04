@@ -28,6 +28,8 @@ var (
 // init registers the app as an event‑log source and opens the log handle.
 func init() {
 	var err error
+	// Hook the standard logger to also write to the event log.
+	log.SetOutput(os.Stdout)
 
 	// Register the source once (only the first run will create a registry entry).
 	// Subsequent runs will fail with “The source is already registered”.
@@ -42,9 +44,6 @@ func init() {
 	if err != nil {
 		log.Fatalf("Failed to open event log: %v", err)
 	}
-
-	// Hook the standard logger to also write to the event log.
-	log.SetOutput(os.Stdout)
 
 }
 
