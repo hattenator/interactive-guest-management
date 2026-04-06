@@ -14,50 +14,69 @@ const (
 )
 
 // MakeIcon renders a 32×32 solid‑colour PNG and embeds it inside a
-// Windows‑compatible ICO file.
+// MakeIcon renders a 2‑image Windows‑compatible ICO file.
+// It creates a 32×32 and a 256×256 solid‑colour PNG and embeds both
+// images into a single ICO file so Windows can use the appropriate size.
 func MakeIcon(c color.RGBA) []byte {
-	// Create the 32x32 image
-	img := image.NewRGBA(image.Rect(0, 0, 32, 32))
-	for y := 0; y < 32; y++ {
-		for x := 0; x < 32; x++ {
-			img.Set(x, y, c)
-		}
-	}
+    // Helper to create PNG data of a given size
+    makePNG := func(sz int) []byte {
+        img := image.NewRGBA(image.Rect(0, 0, sz, sz))
+        for y := 0; y < sz; y++ {
+            for x := 0; x < sz; x++ {
+                img.Set(x, y, c)
+            }
+        }
+        buf := &bytes.Buffer{}
+        _ = png.Encode(buf, img)
+        return buf.Bytes()
+    }
 
-	// Encode as PNG
-	pngBuf := &bytes.Buffer{}
-	if err := png.Encode(pngBuf, img); err != nil {
-		return nil
-	}
-	pngData := pngBuf.Bytes()
+    // Create 32×32 and 256×256 PNGs
+    png32 := makePNG(32)
+    png256 := makePNG(256)
 
-	// ICONDIR header
-	iconDir := make([]byte, iconDirSize)
-	binary.LittleEndian.PutUint16(iconDir[0:], 0)   // Reserved
-	binary.LittleEndian.PutUint16(iconDir[2:], 1)   // Type: 1 = icon
-	binary.LittleEndian.PutUint16(iconDir[4:], 1)   // Count: 1 icon
+    // Assemble ICONDIR header: 2 entries
+    iconDir := make([]byte, iconDirSize)
+    binary.LittleEndian.PutUint16(iconDir[0:], 0)   // Reserved
+    binary.LittleEndian.PutUint16(iconDir[2:], 1)   // Type: 1 = icon
+    binary.LittleEndian.PutUint16(iconDir[4:], 2)   // Count: 2 icons
 
-	// Icon directory entry (ICONDIRENTRY)
-	entry := make([]byte, iconEntrySize)
-	entry[0] = 32                        // Width (32)
-	entry[1] = 32                        // Height (32)
-	entry[2] = 0                         // Color count (0 for PNG)
-	entry[3] = 0                         // Reserved
-	entry[4] = 0                         // Planes (0 for PNG)
-	entry[5] = 0                         // Bits per pixel (0 for PNG)
-	binary.LittleEndian.PutUint32(entry[8:], uint32(len(pngData))) // Bytes in resource
-	binary.LittleEndian.PutUint32(entry[12:], uint32(iconDirSize+iconEntrySize)) // Offset
+    // Entry 1: 32×32 image - PNG format has specific metadata for PNG data
+    entry1 := make([]byte, iconEntrySize)
+    entry1[0] = 32
+    entry1[1] = 32
+    entry1[2] = 0          // Colors: 0 for PNG
+    entry1[3] = 0          // Colors: 0 for PNG
+    binary.LittleEndian.PutUint16(entry1[4:6], 1)  // Planes: 1 for PNG
+    binary.LittleEndian.PutUint16(entry1[6:8], 32) // Bit Count: 32 for PNG
+    binary.LittleEndian.PutUint32(entry1[8:], uint32(len(png32)))
+    // Offsets are measured from start of file
+    offset32 := uint32(iconDirSize + iconEntrySize*2) // header + two entries
+    binary.LittleEndian.PutUint32(entry1[12:], offset32)
 
-	// Assemble the icon file
-	ico := &bytes.Buffer{}
-	ico.Write(iconDir)
-	ico.Write(entry)
-	ico.Write(pngData)
+    // Entry 2: 256×256 image - PNG format has specific metadata for PNG data
+    entry2 := make([]byte, iconEntrySize)
+    entry2[0] = 0 // 256 encoded as 0 per ICO spec
+    entry2[1] = 0
+    entry2[2] = 0          // Colors: 0 for PNG
+    entry2[3] = 0          // Colors: 0 for PNG
+    binary.LittleEndian.PutUint16(entry2[4:6], 1)  // Planes: 1 for PNG
+    binary.LittleEndian.PutUint16(entry2[6:8], 32) // Bit Count: 32 for PNG
+    binary.LittleEndian.PutUint32(entry2[8:], uint32(len(png256)))
+    offset256 := offset32 + uint32(len(png32))
+    binary.LittleEndian.PutUint32(entry2[12:], offset256)
 
-	return ico.Bytes()
+    // Assemble the final ICO
+    ico := &bytes.Buffer{}
+    ico.Write(iconDir)
+    ico.Write(entry1)
+    ico.Write(entry2)
+    ico.Write(png32)
+    ico.Write(png256)
+
+    return ico.Bytes()
 }
 
-// Power icon data used by the systray.
 var (
 	PowerOnIcon  = MakeIcon(color.RGBA{0x00, 0xFF, 0x00, 0xFF}) // green
 	PowerOffIcon = MakeIcon(color.RGBA{0x80, 0x80, 0x80, 0xFF}) // grey
