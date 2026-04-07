@@ -1,0 +1,8 @@
+This is a VS Code environment on Windows with Powershell.
+I do not have Linux or WSL commands working.  There is no sed.
+Please never delete tests or delete functions from _test.go files.
+Please limit imported modules to credible trusted modules.
+Use plenty of comments.
+Keep the comments professional for permanent project upkeep; never comment specific to a task, or responding to a prompt.
+I do not have an MCP server installed.  Do not try to call MCP.
+

@@ -3,3 +3,5 @@ host/host.exe
 cmd/guest/guest.exe
 cmd/guest/guest.exe~
 cmd/host/host.exe
+green.ico
+cmd/guest/Installer.ico

@@ -4,12 +4,7 @@
 package main
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
-	"image"
-	"image/color"
-	"image/png"
 	"log"
 	"os"
 	"syscall"
@@ -17,6 +12,7 @@ import (
 	"unsafe"
 
 	systray "github.com/getlantern/systray"
+	"github.com/hattenator/interactive-guest-management/pkg/icons"
 	"github.com/hattenator/interactive-guest-management/pkg/protocol/win"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc/eventlog"
@@ -157,15 +153,6 @@ func getCurrentTimeTicks() uint64 {
 	return currentTicks
 }
 
-var (
-	//   colour → image byte slice
-	powerOnIcon  = icons.MakeIcon(color.RGBA{0x00, 0xFF, 0x00, 0xFF}) // green
-	powerOffIcon = icons.MakeIcon(color.RGBA{0x80, 0x80, 0x80, 0xFF}) // grey
-	idleIcon     = icons.MakeIcon(color.RGBA{0xFF, 0x00, 0x00, 0xFF}) // red
-	defaultIcon  = icons.MakeIcon(color.RGBA{0x00, 0x00, 0xFF, 0xFF}) // blue
-)
-
-
 // systray menu items
 var (
 	mQuit *systray.MenuItem
@@ -203,11 +190,11 @@ func updateTrayIcon(response string) {
 	var icon []byte
 	switch response {
 	case "virtual-host":
-		icon = powerOnIcon
+		icon = icons.PowerOnIcon
 	case "powersave":
-		icon = idleIcon
+		icon = icons.IdleIcon
 	default:
-		icon = defaultIcon
+		icon = icons.DefaultIcon
 	}
 	if len(icon) == 0 {
 		// No icon data available – skip update

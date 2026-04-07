@@ -1,11 +1,8 @@
 package icons
 
 import (
-	"bytes"
 	"encoding/binary"
-	"image"
-	"image/color"
-	"image/png"
+	"fmt"
 )
 
 const (
@@ -13,112 +10,138 @@ const (
 	iconEntrySize = 16
 )
 
-// MakeIcon renders a 32×32 solid‑colour PNG and embeds it inside a
-// MakeIcon renders a 2‑image Windows‑compatible ICO file.
-// It creates a 32×32 and a 256×256 solid‑colour PNG and embeds both
-// images into a single ICO file so Windows can use the appropriate size.
-func MakeIcon(c color.RGBA) []byte {
-    // Helper to create PNG data of a given size
-    makePNG := func(sz int) []byte {
-        img := image.NewRGBA(image.Rect(0, 0, sz, sz))
-        for y := 0; y < sz; y++ {
-            for x := 0; x < sz; x++ {
-                img.Set(x, y, c)
-            }
-        }
-        buf := &bytes.Buffer{}
-        _ = png.Encode(buf, img)
-        return buf.Bytes()
-    }
+// Prebuilt 16x16 tray icons you can pass directly to systray.SetIcon(...).
+var (
+	RedSquare16    = MustSolidSquareICO(16, 0xFF, 0x00, 0x00, 0xFF)
+	YellowSquare16 = MustSolidSquareICO(16, 0xFF, 0xD7, 0x00, 0xFF)
+	GreenSquare16  = MustSolidSquareICO(16, 0x00, 0xC8, 0x00, 0xFF)
+)
 
-    // Create 32×32 and 256×256 PNGs
-    png32 := makePNG(32)
-    png256 := makePNG(256)
+// MustSolidSquareICO is like SolidSquareICO but panics on error.
+func MustSolidSquareICO(size int, r, g, b, a byte) []byte {
+	ico, err := MakeIcon(size, r, g, b, a)
+	if err != nil {
+		panic(err)
+	}
+	return ico
+}
 
-    // Assemble ICONDIR header: 2 entries
-    iconDir := make([]byte, iconDirSize)
-    binary.LittleEndian.PutUint16(iconDir[0:], 0)   // Reserved
-    binary.LittleEndian.PutUint16(iconDir[2:], 1)   // Type: 1 = icon
-    binary.LittleEndian.PutUint16(iconDir[4:], 2)   // Count: 2 icons
+// returns the bytes of a Windows .ico file containing a single
+// solid-color square icon, suitable for systray.SetIcon(...) on Windows.
+//
+// size should typically be 16, 20, 24, 32, or 48. For systray, 16x16 or 32x32
+// are usually the most useful.
+func MakeIcon(size int, r, g, b, a byte) ([]byte, error) {
+	if size <= 0 || size > 256 {
+		return nil, fmt.Errorf("size must be in range 1..256, got %d", size)
+	}
 
-    // Entry 1: 32×32 image - PNG format has specific metadata for PNG data
-    entry1 := make([]byte, iconEntrySize)
-    entry1[0] = 32
-    entry1[1] = 32
-    entry1[2] = 0          // Colors: 0 for PNG
-    entry1[3] = 0          // Colors: 0 for PNG
-    binary.LittleEndian.PutUint16(entry1[4:6], 1)  // Planes: 1 for PNG
-    binary.LittleEndian.PutUint16(entry1[6:8], 32) // Bit Count: 32 for PNG
-    binary.LittleEndian.PutUint32(entry1[8:], uint32(len(png32)))
-    // Offsets are measured from start of file
-    offset32 := uint32(iconDirSize + iconEntrySize*2) // header + two entries
-    binary.LittleEndian.PutUint32(entry1[12:], offset32)
+	width := size
+	height := size
 
-    // Entry 2: 256×256 image - PNG format has specific metadata for PNG data
-    entry2 := make([]byte, iconEntrySize)
-    entry2[0] = 0 // 256 encoded as 0 per ICO spec
-    entry2[1] = 0
-    entry2[2] = 0          // Colors: 0 for PNG
-    entry2[3] = 0          // Colors: 0 for PNG
-    binary.LittleEndian.PutUint16(entry2[4:6], 1)  // Planes: 1 for PNG
-    binary.LittleEndian.PutUint16(entry2[6:8], 32) // Bit Count: 32 for PNG
-    binary.LittleEndian.PutUint32(entry2[8:], uint32(len(png256)))
-    offset256 := offset32 + uint32(len(png32))
-    binary.LittleEndian.PutUint32(entry2[12:], offset256)
+	// ICO image payload is a DIB/BMP-style image:
+	// - BITMAPINFOHEADER
+	// - XOR bitmap pixels (BGRA, bottom-up)
+	// - AND mask (1bpp, padded to 32-bit rows)
+	//
+	// For ICO, biHeight is doubled: XOR height + AND mask height.
+	const bitmapInfoHeaderSize = 40
 
-    // Assemble the final ICO
-    ico := &bytes.Buffer{}
-    ico.Write(iconDir)
-    ico.Write(entry1)
-    ico.Write(entry2)
-    ico.Write(png32)
-    ico.Write(png256)
+	// 32-bit BGRA pixels
+	xorRowSize := width * 4
+	xorSize := xorRowSize * height
 
-    return ico.Bytes()
+	// 1-bit AND mask, padded to 32 bits per row
+	andRowSize := ((width + 31) / 32) * 4
+	andSize := andRowSize * height
+
+	imageSize := bitmapInfoHeaderSize + xorSize + andSize
+	totalSize := 6 + 16 + imageSize // ICONDIR + ICONDIRENTRY + image payload
+
+	buf := make([]byte, totalSize)
+
+	// ---------------------------------------------------------------------
+	// ICONDIR (6 bytes)
+	// ---------------------------------------------------------------------
+	// WORD idReserved = 0
+	// WORD idType = 1 (icon)
+	// WORD idCount = 1
+	binary.LittleEndian.PutUint16(buf[0:2], 0)
+	binary.LittleEndian.PutUint16(buf[2:4], 1)
+	binary.LittleEndian.PutUint16(buf[4:6], 1)
+
+	// ---------------------------------------------------------------------
+	// ICONDIRENTRY (16 bytes)
+	// ---------------------------------------------------------------------
+	// BYTE  bWidth        (0 means 256)
+	// BYTE  bHeight       (0 means 256)
+	// BYTE  bColorCount   (0 for >= 8bpp)
+	// BYTE  bReserved     = 0
+	// WORD  wPlanes       = 1
+	// WORD  wBitCount     = 32
+	// DWORD dwBytesInRes
+	// DWORD dwImageOffset
+	entry := buf[6:22]
+	entry[0] = dimByte(width)
+	entry[1] = dimByte(height)
+	entry[2] = 0
+	entry[3] = 0
+	binary.LittleEndian.PutUint16(entry[4:6], 1)
+	binary.LittleEndian.PutUint16(entry[6:8], 32)
+	binary.LittleEndian.PutUint32(entry[8:12], uint32(imageSize))
+	binary.LittleEndian.PutUint32(entry[12:16], uint32(6+16))
+
+	// ---------------------------------------------------------------------
+	// BITMAPINFOHEADER (40 bytes)
+	// ---------------------------------------------------------------------
+	img := buf[22:]
+	binary.LittleEndian.PutUint32(img[0:4], bitmapInfoHeaderSize)      // biSize
+	binary.LittleEndian.PutUint32(img[4:8], uint32(width))             // biWidth
+	binary.LittleEndian.PutUint32(img[8:12], uint32(height*2))         // biHeight (XOR + AND)
+	binary.LittleEndian.PutUint16(img[12:14], 1)                       // biPlanes
+	binary.LittleEndian.PutUint16(img[14:16], 32)                      // biBitCount
+	binary.LittleEndian.PutUint32(img[16:20], 0)                       // biCompression = BI_RGB
+	binary.LittleEndian.PutUint32(img[20:24], uint32(xorSize+andSize)) // biSizeImage
+	binary.LittleEndian.PutUint32(img[24:28], 0)                       // biXPelsPerMeter
+	binary.LittleEndian.PutUint32(img[28:32], 0)                       // biYPelsPerMeter
+	binary.LittleEndian.PutUint32(img[32:36], 0)                       // biClrUsed
+	binary.LittleEndian.PutUint32(img[36:40], 0)                       // biClrImportant
+
+	// ---------------------------------------------------------------------
+	// XOR bitmap (BGRA, bottom-up)
+	// ---------------------------------------------------------------------
+	xorStart := 40
+	for y := 0; y < height; y++ {
+		// bottom-up row order in DIB
+		row := xorStart + (height-1-y)*xorRowSize
+		for x := 0; x < width; x++ {
+			p := row + x*4
+			img[p+0] = b
+			img[p+1] = g
+			img[p+2] = r
+			img[p+3] = a
+		}
+	}
+
+	// ---------------------------------------------------------------------
+	// AND mask
+	// ---------------------------------------------------------------------
+	// All zero bits => all pixels opaque / defined by alpha.
+	// The bytes are already zero-initialized, so nothing more is needed.
+
+	return buf, nil
+}
+
+func dimByte(n int) byte {
+	if n == 256 {
+		return 0
+	}
+	return byte(n)
 }
 
 var (
-	PowerOnIcon  = MakeIcon(color.RGBA{0x00, 0xFF, 0x00, 0xFF}) // green
-	PowerOffIcon = MakeIcon(color.RGBA{0x80, 0x80, 0x80, 0xFF}) // grey
-	IdleIcon     = MakeIcon(color.RGBA{0xFF, 0x00, 0x00, 0xFF}) // red
-	DefaultIcon  = MakeIcon(color.RGBA{0x00, 0x00, 0xFF, 0xFF}) // blue
+	PowerOnIcon, _  = MakeIcon(16, 0x00, 0xFF, 0x00, 0xFF) // green
+	PowerOffIcon, _ = MakeIcon(16, 0x80, 0x80, 0x80, 0xFF) // grey
+	IdleIcon, _     = MakeIcon(16, 0xFF, 0x00, 0x00, 0xFF) // red
+	DefaultIcon, _  = MakeIcon(16, 0x00, 0x00, 0xFF, 0xFF) // blue
 )
-
-// Helper functions for testing
-func squarePNG(col color.RGBA) []byte {
-	// used in tests
-	const sz = 32
-	img := image.NewRGBA(image.Rect(0, 0, sz, sz))
-	for y := 0; y < sz; y++ {
-		for x := 0; x < sz; x++ {
-			img.Set(x, y, col)
-		}
-	}
-	var buf bytes.Buffer
-	_ = png.Encode(&buf, img)
-	return buf.Bytes()
-}
-
-func makeSquare(col color.RGBA) image.Image {
-	const sz = 32
-	img := image.NewRGBA(image.Rect(0, 0, sz, sz))
-	for y := 0; y < sz; y++ {
-		for x := 0; x < sz; x++ {
-			img.Set(x, y, col)
-		}
-	}
-	return img
-}
-
-func Resize(src image.Image, dim int) image.Image {
-	dst := image.NewRGBA(image.Rect(0, 0, dim, dim))
-	for y := 0; y < dim; y++ {
-		for x := 0; x < dim; x++ {
-			// nearest pixel from src
-			sx := x * src.Bounds().Dx() / dim
-			sy := y * src.Bounds().Dy() / dim
-			dst.Set(x, y, src.At(sx, sy))
-		}
-	}
-	return dst
-}
