@@ -1,5 +1,6 @@
 //go:build windows
 // +build windows
+
 package win
 
 import (
@@ -15,21 +16,22 @@ type SocketListener struct {
 	HostSocket windows.Handle
 }
 
-func (w SocketListener) SendCommand(command string) (response string) {
+func (w SocketListener) SendCommand(command string) (response protocol.CmdMessage, err error) {
 	msg, err := protocol.NewCmdMessage(command, rand.Uint64(), []byte("secret"))
+
 	if err != nil {
-		return "Invalid Response"
+		return
 	}
 	jsonBytes, err := json.MarshalIndent(msg, "", "  ")
 	if err != nil {
-		return "Invalid Response"
+		return
 	}
 
 	// --- write ----------------------------------------------------------
 	var written uint32
 
-	if err := windows.WriteFile(w.HostSocket, jsonBytes, &written, nil); err != nil {
-		return "Invalid Response"
+	if err = windows.WriteFile(w.HostSocket, jsonBytes, &written, nil); err != nil {
+		return
 	}
 	fmt.Printf("wrote %d bytes\n", written)
 
@@ -39,10 +41,10 @@ func (w SocketListener) SendCommand(command string) (response string) {
 	// --- read ------------------------------------------------------------
 	buf := make([]byte, 1024)
 	var n uint32
-	if err := windows.ReadFile(w.HostSocket, buf, &n, nil); err != nil {
-		return "Invalid Response"
+	if err = windows.ReadFile(w.HostSocket, buf, &n, nil); err != nil {
+		return
 	}
 	fmt.Printf("read %d bytes: %q\n", n, buf[:n])
-	response = string(buf[:n])
-	return response
+	err = json.Unmarshal(buf[:n], &response)
+	return
 }

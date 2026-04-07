@@ -82,6 +82,8 @@ func logToEvent(severity string, msg string) {
 }
 
 func main() {
+	go setupSystray()
+	log.Printf("Systray loaded")
 	defer closeCleanUp()
 	path := `\\.\Global\host.0`
 	hostSocket := openSocket(path)
@@ -173,7 +175,10 @@ func onReady() {
 	mQuit = systray.AddMenuItem("Quit", "Quit the agent")
 
 	// quit routine
-	<-mQuit.ClickedCh
+	go func() {
+		<-mQuit.ClickedCh
+		os.Exit(0)
+	}()
 }
 
 // onExit is called when the systray icon is destroyed.
@@ -201,6 +206,11 @@ func updateTrayIcon(response string) {
 		return
 	}
 	//reader := bytes.NewReader(icon)
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("SetIcon Failed: %v", r)
+		}
+	}()
 	systray.SetIcon(icon)
 	mInfo.SetTitle(fmt.Sprintf("Power State: %s", response))
 }
@@ -209,8 +219,13 @@ func getPowerState(protocolHandler win.SocketListener) (powerState string) {
 
 	command := "GetPowerState"
 	for true {
-		response := protocolHandler.SendCommand(command)
-		updateTrayIcon(response)
+		response, err := protocolHandler.SendCommand(command)
+
+		if err == nil {
+			updateTrayIcon(response.Command)
+		} else {
+			log.Printf("GetPowerState SendCommand issue: %v", err)
+		}
 		time.Sleep(5000 * time.Millisecond)
 
 	}
